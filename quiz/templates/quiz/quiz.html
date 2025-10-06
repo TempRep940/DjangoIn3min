@@ -1,0 +1,192 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Quiz loop</title>
+  <style>
+    /* Container style */
+    .card {
+      width: 640px;
+      margin: 40px auto;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      position: relative; /* Absolute positioning for timer */
+      font-family: Arial, sans-serif;
+    }
+
+    /* Timer at top-right corner */
+    #timer {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      font-weight: bold;
+      font-size: 20px;
+    }
+    .timer-3 { color: #000000; }      /* 3 -> black */
+    .timer-2 { color: #8B0000; }      /* 2 -> dark red */
+    .timer-1or0 { color: #FF0000; }   /* 1 & 0 -> bright red */
+
+    /* Question text */
+    #question-text { font-size: 24px; margin-bottom: 16px; }
+
+    /* Option styles */
+    ul#options {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    ul#options li.option {
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+    ul#options li.option:hover { background: #f5f5f5; }
+
+    /* Click style (visual feedback only; logic handled separately) */
+    li.option.clicked { outline: 2px solid #00a; }
+
+    /* Correct/Wrong visual feedback (example only) */
+    li.option.correct { background: #e6ffea; border-color: #2c9a4a; }
+    li.option.wrong   { background: #ffecec; border-color: #d64545; color: #a00; }
+
+    /* Centered status text */
+    .center { text-align: center; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div id="timer" class="timer-3">3</div>
+    <div id="question-text">Loading...</div>
+
+    <ul id="options"></ul>
+
+    <div class="center" id="status"></div>
+  </div>
+
+  {# Put questions safely as JSON in the page for JS to read #}
+  {{ questions|json_script:"questions-data" }}
+
+<script>
+    // Read questions JSON from template
+    const questions = JSON.parse(document.getElementById('questions-data').textContent);
+
+    // Copy: remaining holds live questions
+    let remaining = questions.slice();
+
+    // Page elements
+    const qText = document.getElementById('question-text');
+    const optsList = document.getElementById('options');
+    const timerEl = document.getElementById('timer');
+    const statusEl = document.getElementById('status');
+
+    let currentIndex = -1;
+    let countdownTimer = null;
+
+    let lastIndex = -1;
+    function pickNextIndex() {
+        if (remaining.length === 0) return -1;
+        if (remaining.length === 1) return 0;
+        let idx;
+        do {
+            idx = Math.floor(Math.random() * remaining.length);
+        } while (idx === lastIndex && remaining.length > 1);
+        lastIndex = idx;
+        return idx;
+    }
+
+    function renderQuestion(idx) {
+        // No remaining questions
+        if (idx === -1) {
+            qText.textContent = "All done!";
+            optsList.innerHTML = '';
+            timerEl.textContent = '';
+            statusEl.innerHTML = '<button id="again-btn">Again</button>';
+            document.getElementById('again-btn').addEventListener('click', () => {
+                remaining = questions.slice();  // Reset questions
+                currentIndex = pickNextIndex();
+                renderQuestion(currentIndex);
+            });
+            return;
+        }
+
+        const q = remaining[idx];
+        qText.textContent = q.text;
+        optsList.innerHTML = '';
+        statusEl.textContent = '';
+
+        q.options.forEach((opt, i) => {
+            const li = document.createElement('li');
+            li.className = 'option';
+            li.textContent = opt;
+            if (i === q.correct) li.dataset.correct = "true";
+
+            li.addEventListener('click', () => {
+                clearInterval(countdownTimer);  // Stop timer
+                countdownTimer = null;
+
+                if (li.dataset.correct === "true") {
+                    // ✅ Correct → remove question
+                    remaining.splice(idx, 1);
+                    statusEl.textContent = "Correct!";
+                } else {
+                    // ❌ Wrong → do not remove
+                    statusEl.textContent = "Wrong!";
+                }
+
+                // Next question (if any left)
+                setTimeout(() => {
+                    currentIndex = pickNextIndex();
+                    renderQuestion(currentIndex);
+                }, 500); // 0.5s delay to show status
+            });
+
+            optsList.appendChild(li);
+        });
+
+        startCountdown(() => {
+            // Time up → automatically switch to next question
+            currentIndex = pickNextIndex();
+            renderQuestion(currentIndex);
+        });
+    }
+
+    function startCountdown(onZero) {
+        if (countdownTimer) {
+            clearInterval(countdownTimer);
+        }
+        let t = 3;
+        timerEl.textContent = t;
+        setTimerColor(t);
+
+        countdownTimer = setInterval(() => {
+            t -= 1;
+            timerEl.textContent = t;
+            setTimerColor(t);
+            if (t <= 0) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+                onZero && onZero();
+            }
+        }, 1000);
+    }
+
+    function setTimerColor(val) {
+        timerEl.className = '';
+        if (val === 3) timerEl.classList.add('timer-3');
+        else if (val === 2) timerEl.classList.add('timer-2');
+        else timerEl.classList.add('timer-1or0');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        currentIndex = pickNextIndex();
+        renderQuestion(currentIndex);
+    });
+</script>
+
+</body>
+</html>
